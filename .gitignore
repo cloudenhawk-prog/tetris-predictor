@@ -1,0 +1,9 @@
+node_modules
+.dist
+dist
+.vinxi
+.vite
+.env
+.env.*
+coverage
+training-output

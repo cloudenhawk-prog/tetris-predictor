@@ -1,0 +1,6 @@
+# esbuild (used by vite and tsx) needs its install script to fetch its native binary.
+# pnpm 11 reads `allowBuilds`; pnpm 10 reads `onlyBuiltDependencies`.
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
