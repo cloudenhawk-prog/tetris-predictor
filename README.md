@@ -41,6 +41,10 @@ The codebase follows a light clean-architecture split:
   `src/domain/puzzle/engine.ts`.
 - **Loss**: a block is in the top row once everything has settled, i.e. at the start of the
   next turn (or a block is pushed out of the grid).
+- **Bombs are hidden**: whether an incoming block is a bomb is only revealed once its row is pushed
+  into the grid. The planner strips bombs from the known incoming row (`hideBombs` in the engine),
+  so neither the analysis nor training targets can rely on them; the real row, bombs included,
+  still decides what actually happens.
 - **Turn**: one pushed row. The UI's "Turns survived" counter is passed to the analyzer
   as the game turn. It's editable, so you can join a game in progress at the right difficulty.
 
@@ -83,7 +87,8 @@ this board instead.
 
 Incoming rows come from `src/domain/puzzle/row-generator.ts`. Block-width odds interpolate
 linearly from `earlyWidthWeights` (before `rampStartTurn`) to `lateWidthWeights` (capped at
-`rampEndTurn`). The bomb chance and the 1-vs-2 empty-cell odds are also set there. The model
+`rampEndTurn`). The bomb odds (`bombRowChance`, about one bomb per 80 rows, at most one per row and
+never on a block wider than `bombMaxWidth` = 3) and the 1-vs-2 empty-cell odds are also set there. The model
 receives the difficulty progress as an input, so it plans for harder rows later in the game.
 After changing `DEFAULT_ROW_GENERATION`, retrain.
 
@@ -116,6 +121,39 @@ Episodes run up to 2000 turns and evaluation games up to 3000 turns (`--eval-max
 Other useful flags: `--workers`, `--decisions` (self-play decisions per iteration),
 `--hidden 128,64` (with `--fresh`), `--lr`, `--epsilon-start/--epsilon-end`, `--eval-every`,
 `--eval-games`, `--out`, `--seed`.
+
+## Recording real games
+
+The **Recording** panel records games played with the tool, so the real game's rows and bombs can
+later be compared with the generator. Press **Record real game**, then play as usual; mark bombs
+on the Next Row when the game reveals them (they are recorded, but the model never sees them in
+advance). Each pushed row stores:
+
+- the round number, the board before the move and after the turn, and the move (by hand or applied
+  from the ranking, with its rank and the analysis' top move when one was computed)
+- the Next Row as pushed, bombs included, and whether it came from **Random** (not real data)
+- every clear in order (rows, blocks destroyed by width, blast victims, bombs detonated), plus
+  rows destroyed for the turn (the combo) and the "Rows destroyed" counter
+- optionally the game's score (`scoreAfter`), see below
+
+A session lasts from Record to Stop and **survives page reloads**: after a reload it keeps recording
+into the same session and logs a `page-loaded` event, so a game isn't split in two. Re-entering
+"Turns survived" or "Rows destroyed" (both editable) is logged too, and a turn whose board differs
+from the previous turn's result is flagged `boardEdited` (the board was corrected by hand).
+
+**Score tracking** (temporary, to work out the scoring formula): tick **Track game score** in the
+Recording panel and a Score counter appears next to the other counters. Keep it at the game's score
+after each round, updated before pushing the row; each turn stores it as `scoreAfter` (`null` while
+tracking is off, so "not tracked" never looks like 0). Edits are logged as `score-set` events.
+Because points only come from destroyed rows, and destroying rows always scores, `scoreGains` in
+`game-recording.ts` derives each turn's points and flags the ones not to trust: a score that didn't
+change after destroyed rows was not updated (`missing`, including a score left at 0), the next change
+lumps several turns (`catch-up`), and changes without destroyed rows are `inconsistent`.
+
+Sessions are kept in browser storage and, under `npm run dev`, also written to
+`recordings/<session id>.json`. **Export** downloads every session in this browser as one JSON file.
+The format is documented in `src/features/puzzle/recording/game-recording.ts`. Recordings aren't
+used for training yet.
 
 ## Run
 

@@ -21,6 +21,12 @@ export const newId = () => idCounter++;
 
 export const cloneBlocks = (blocks: Block[]): Block[] => blocks.map((b) => ({ ...b }));
 
+/**
+ * The incoming row as the player sees it: whether a block is a bomb is only
+ * revealed once the row has been pushed into the grid.
+ */
+export const hideBombs = (row: RowCell[]): RowCell[] => row.map(({ id, col, w }) => ({ id, col, w }));
+
 export const overlapCols = (a: { col: number; w: number }, b: { col: number; w: number }) =>
   a.col < b.col + b.w && b.col < a.col + a.w;
 
@@ -79,6 +85,8 @@ export interface SettlePhase {
   kind: SettlePhaseKind;
   blocks: Block[];
   removedIds: number[];
+  /** Full rows that triggered a "clear" phase (empty for gravity). */
+  rows: number[];
 }
 
 function blocksDestroyedByRows(blocks: Block[], rows: number[]): Set<number> {
@@ -119,7 +127,7 @@ export function settleWithPhases(blocks: Block[]): {
   for (;;) {
     const fallen = gravity(list);
     if (fallen.some((b) => list.find((o) => o.id === b.id)?.row !== b.row)) {
-      phases.push({ kind: "gravity", blocks: cloneBlocks(fallen), removedIds: [] });
+      phases.push({ kind: "gravity", blocks: cloneBlocks(fallen), removedIds: [], rows: [] });
     }
     list = fallen;
 
@@ -131,6 +139,7 @@ export function settleWithPhases(blocks: Block[]): {
       kind: "clear",
       blocks: cloneBlocks(list),
       removedIds: [...removed],
+      rows,
     });
     list = list.filter((b) => !removed.has(b.id));
   }

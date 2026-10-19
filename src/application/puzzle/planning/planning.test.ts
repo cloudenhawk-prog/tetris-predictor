@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest";
 import type { BoardValueModel } from "@/application/puzzle/contracts/move-analysis";
 import { moveReturn } from "@/application/puzzle/planning/return-model";
 import { LookaheadMoveAnalyzer } from "@/application/puzzle/services/lookahead-move-analyzer";
-import { DEFAULT_PLANNER_OPTIONS } from "@/application/puzzle/planning/move-planner";
+import { DEFAULT_PLANNER_OPTIONS, planMoves } from "@/application/puzzle/planning/move-planner";
 import { type SearchedMove, searchMoves, searchMovesFor } from "@/application/puzzle/planning/move-search";
-import { type Block, ROWS } from "@/domain/puzzle/engine";
+import { type Block, ROWS, resolvePlayerMove } from "@/domain/puzzle/engine";
 
 const B = ROWS - 1; // bottom row
 
@@ -71,5 +71,24 @@ describe("searchMoves", () => {
   test("is deterministic for a seed", () => {
     const run = () => searchMovesFor(3, board, incoming, 0, lowStack, 7, { candidates: 3, depth: 2 }).map((m) => [m.move, m.value]);
     expect(run()).toEqual(run());
+  });
+});
+
+describe("planMoves", () => {
+  test("ignores bombs in the incoming row: they are hidden until pushed", () => {
+    const model: BoardValueModel = { evaluate: (blocks) => blocks.length };
+    // Block 1 fills the incoming row's gap, so the pushed row clears at once and
+    // a bomb in it would blast block 2, lifted right above it.
+    const board: Block[] = [
+      { id: 1, row: B, col: 7, w: 1 },
+      { id: 2, row: B, col: 0, w: 3 },
+    ];
+    const values = (bomb: boolean) =>
+      planMoves(board, [{ id: 10, col: 0, w: 3, ...(bomb ? { bomb } : {}) }, { id: 11, col: 3, w: 4 }], 0, model, 1).map((p) => p.value);
+    expect(values(true)).toEqual(values(false));
+    // With the bomb visible, the outcome would differ.
+    const blast = (bomb: boolean) =>
+      resolvePlayerMove(board, { blockId: 1, delta: 0 }, [{ id: 10, col: 0, w: 3, ...(bomb ? { bomb } : {}) }, { id: 11, col: 3, w: 4 }], () => []).blocks.length;
+    expect(blast(true)).not.toBe(blast(false));
   });
 });

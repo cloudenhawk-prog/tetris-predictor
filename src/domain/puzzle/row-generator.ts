@@ -30,8 +30,10 @@ export interface DifficultySchedule {
 
 export interface RowGenerationConfig {
   schedule: DifficultySchedule;
-  /** Chance that any generated block is a bomb. */
-  bombChance: number;
+  /** Chance that a generated row contains a bomb (at most one per row). */
+  bombRowChance: number;
+  /** Widest block that can be a bomb. */
+  bombMaxWidth: number;
   /** Relative odds of a row leaving 1 or 2 empty cells. */
   emptyCellWeights: readonly [one: number, two: number];
 }
@@ -43,7 +45,8 @@ export const DEFAULT_ROW_GENERATION: RowGenerationConfig = {
     earlyWidthWeights: [0.35, 0.3, 0.2, 0.15],
     lateWidthWeights: [0.15, 0.25, 0.3, 0.3],
   },
-  bombChance: 0.04,
+  bombRowChance: 1 / 80,
+  bombMaxWidth: 3,
   emptyCellWeights: [0.5, 0.5],
 };
 
@@ -91,8 +94,13 @@ export function generateRow(
     let room = 0;
     while (col + room < COLS && !empty.has(col + room)) room++;
     const w = pickWeighted(rng, widths.slice(0, Math.min(room, 4))) + 1;
-    row.push({ id: newId(), col, w, ...(rng() < config.bombChance ? { bomb: true } : {}) });
+    row.push({ id: newId(), col, w });
     col += w;
+  }
+  if (rng() < config.bombRowChance) {
+    const eligible = row.filter((cell) => cell.w <= config.bombMaxWidth);
+    const bomb = eligible[Math.floor(rng() * eligible.length)];
+    if (bomb) bomb.bomb = true;
   }
   return row;
 }

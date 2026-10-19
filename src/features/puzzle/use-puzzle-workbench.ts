@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Bomb, Eraser, MoveHorizontal } from "lucide-react";
-import { COLS, ROWS, type Block, type RowCell, applyMove as engineApplyMove, blockAt, canPlace, canPlaceRun, isRefillRequired, newId, occupiedRowCount, pushUp, settleWithPhases } from "@/domain/puzzle/engine";
+import { COLS, ROWS, type Block, type Move, type RowCell, applyMove as engineApplyMove, blockAt, canPlace, canPlaceRun, isRefillRequired, newId, occupiedRowCount, pushUp, settleWithPhases } from "@/domain/puzzle/engine";
 import { generateRow } from "@/domain/puzzle/row-generator";
+import { summarizeClears } from "@/domain/puzzle/clear-summary";
 import type { ScoredMove } from "@/application/puzzle/contracts/move-analysis";
 import { MoveSearchClient } from "@/infrastructure/puzzle/search-worker/move-search-client";
+import { sameRecordedBoard, toRecordedBlocks } from "./recording/game-recording";
+import { type TurnRecordInput, useGameRecorder } from "./recording/use-game-recorder";
 
 const CLEAR_MS = 1100;
 const CLEAR_GAP_MS = 450;
@@ -26,7 +29,12 @@ export type SearchSettings = { thinkSeconds: number; depth: number; candidates: 
 export const DEFAULT_SEARCH_SETTINGS: SearchSettings = { thinkSeconds: 2, depth: 3, candidates: 6 };
 type SearchProgress = { samples: number; elapsedMs: number; thinkMs: number; done: boolean; warning?: string };
 
+const TRACK_SCORE_KEY = "tetris-predictor.recording.track-score";
+
 const moveKey = (move: ScoredMove["move"]) => `${move.blockId}:${move.delta}`;
+
+/** How the turn about to be played was reached, for the recorder. */
+type TurnOrigin = Pick<TurnRecordInput, "board" | "move" | "moveSource">;
 
 export function usePuzzleWorkbench() {
   // Search runs in a worker (which also holds the model weights) so the UI stays responsive.
@@ -55,6 +63,22 @@ export function usePuzzleWorkbench() {
   const [removingIds, setRemovingIds] = useState<number[]>([]);
   const [motionBlocks, setMotionBlocks] = useState<MotionBlock[]>([]);
   const [lifting, setLifting] = useState(false);
+  const [nextRowRandomized, setNextRowRandomized] = useState(false);
+  // The real game's score, kept up to date by hand while recording with score tracking on.
+  const [score, setScore] = useState(0);
+  const committedScoreRef = useRef(0);
+  const [trackScore, setTrackScore] = useState(false);
+  useEffect(() => {
+    try {
+      setTrackScore(localStorage.getItem(TRACK_SCORE_KEY) === "1");
+    } catch {
+      // Defaults to off.
+    }
+  }, []);
+  const recorder = useGameRecorder();
+  // The latest analysis and the board it was computed for, kept through a manual
+  // slide so the recorder can note where the played move ranked.
+  const analysisForRef = useRef<{ board: Block[]; moves: ScoredMove[] } | null>(null);
 
   const nextFilled = nextRow.reduce((a, r) => a + r.w, 0);
   const nextValid = nextFilled === COLS - 1 || nextFilled === COLS - 2;
@@ -268,10 +292,13 @@ export function usePuzzleWorkbench() {
     selectedKeyRef.current = null;
     setSelected(0);
     setSearchProgress({ samples: 0, elapsedMs: 0, thinkMs, done: false });
+    const analyzed = { board: blocks, moves: [] as ScoredMove[] };
+    analysisForRef.current = analyzed;
     searchClient().search(
       { blocks, incoming: nextRow, turn: turnsSurvived, thinkMs, depth: searchSettings.depth, candidates: searchSettings.candidates },
       (update) => {
         if (update.moves.length > 0) {
+          analyzed.moves = update.moves;
           setAnalysis(update.moves);
           // Keep the player's chosen move selected while the ranking shifts.
           const key = selectedKeyRef.current;
@@ -296,16 +323,32 @@ export function usePuzzleWorkbench() {
     const moved = engineApplyMove(blocks, entry.move);
     setBlocks(moved);
     await pause(650);
-    await runTurn(moved);
+    await runTurn(moved, { board: blocks, move: entry.move, moveSource: "applied" });
   };
 
   const advanceTurn = async () => {
     if (animating || !canAdvance) return;
-    await runTurn(blocks);
+    const moved = movedThisTurn ? blocks.find((b) => b.id === movedThisTurn.id) : undefined;
+    if (!moved || !movedThisTurn) {
+      await runTurn(blocks, { board: blocks, move: null, moveSource: "none" });
+      return;
+    }
+    const board = blocks.map((b) => (b.id === moved.id ? { ...b, col: movedThisTurn.originCol } : b));
+    const move: Move = { blockId: moved.id, delta: moved.col - movedThisTurn.originCol };
+    await runTurn(blocks, { board, move, moveSource: "manual" });
+  };
+
+  const analysisFor = (board: Block[]) => {
+    const analyzed = analysisForRef.current;
+    return analyzed && analyzed.moves.length > 0 && sameRecordedBoard(toRecordedBlocks(analyzed.board), toRecordedBlocks(board))
+      ? analyzed.moves
+      : null;
   };
 
   /** settle -> push the next row -> settle, animated, starting from `source`. */
-  const runTurn = async (source: Block[]) => {
+  const runTurn = async (source: Block[], origin: TurnOrigin) => {
+    const shownAnalysis = analysisFor(origin.board);
+    const pushedRow = nextRow;
     resetAnalysis();
     setAnimating(true);
     setDrag(null);
@@ -331,18 +374,72 @@ export function usePuzzleWorkbench() {
     await pause(160);
     const second = await runSettleAnimation(pushed.blocks);
     setMovedThisTurn(null);
-    setRowsDestroyed((current) => current + first.cleared + second.cleared);
+    const rowsDestroyedCounter = rowsDestroyed + first.cleared + second.cleared;
+    setRowsDestroyed(rowsDestroyedCounter);
     setTurnsSurvived((current) => current + 1);
     const lost = pushed.overflow || second.blocks.some((b) => b.row === 0);
+    recorder.recordTurn({
+      turn: turnsSurvived,
+      forced: forcedPush,
+      ...origin,
+      analysis: shownAnalysis,
+      nextRow: pushedRow,
+      nextRowRandomized,
+      moveClears: summarizeClears(first.phases),
+      pushClears: summarizeClears(second.phases),
+      boardAfter: second.blocks,
+      lost,
+      rowsDestroyedCounter,
+      scoreAfter: trackScore ? score : null,
+    });
+    setNextRowRandomized(false);
+    analysisForRef.current = null;
     setRefilling(!lost && isRefillRequired(second.blocks, refilling));
     setStatus(lost ? "lost" : "ready");
     resetAnalysis();
     setAnimating(false);
   };
 
+  const counterValue = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+
   const setTurn = (turn: number) => {
     resetAnalysis();
-    setTurnsSurvived(Number.isFinite(turn) ? Math.max(0, Math.floor(turn)) : 0);
+    const to = counterValue(turn);
+    if (to !== turnsSurvived) recorder.logEvent({ type: "turn-set", from: turnsSurvived, to });
+    setTurnsSurvived(to);
+  };
+
+  /** Editable so the counter can be restored after a page reload. */
+  const setRowsDestroyedCount = (count: number) => {
+    const to = counterValue(count);
+    if (to !== rowsDestroyed) recorder.logEvent({ type: "rows-destroyed-set", from: rowsDestroyed, to });
+    setRowsDestroyed(to);
+  };
+
+  const setScoreCount = (value: number) => setScore(counterValue(value));
+
+  /** Logs a score edit once the field loses focus, not on every keystroke. */
+  const commitScore = () => {
+    const from = committedScoreRef.current;
+    if (score === from) return;
+    committedScoreRef.current = score;
+    recorder.logEvent({ type: "score-set", from, to: score, turnsRecorded: recorder.session?.turns.length ?? 0 });
+  };
+
+  const toggleTrackScore = () => {
+    const enabled = !trackScore;
+    setTrackScore(enabled);
+    try {
+      localStorage.setItem(TRACK_SCORE_KEY, enabled ? "1" : "0");
+    } catch {
+      // Only a convenience; the toggle still works for this page.
+    }
+    recorder.logEvent({ type: "score-tracking", enabled, score });
+  };
+
+  const toggleRecording = () => {
+    if (recorder.recording) recorder.stop();
+    else recorder.start(turnsSurvived, rowsDestroyed, trackScore ? score : null);
   };
 
   /** Same generator and difficulty schedule the model is trained on, for the upcoming turn. */
@@ -350,14 +447,19 @@ export function usePuzzleWorkbench() {
     if (animating) return;
     resetAnalysis();
     setNextRow(generateRow(Math.random, turnsSurvived));
+    setNextRowRandomized(true);
   };
 
   const clearBoard = () => {
+    recorder.logEvent({ type: "board-cleared" });
+    setNextRowRandomized(false);
     setBlocks([]);
     setNextRow([]);
     setTurnsSurvived(0);
     setStatus("ready");
     setRowsDestroyed(0);
+    setScore(0);
+    committedScoreRef.current = 0;
     setRefilling(false);
     setMovedThisTurn(null);
     setDrag(null);
@@ -367,7 +469,7 @@ export function usePuzzleWorkbench() {
     resetAnalysis();
   };
 
-  return { blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, compute, applyMove, advanceTurn, clearBoard };
+  return { blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, compute, applyMove, advanceTurn, clearBoard };
 }
 
 export type PuzzleWorkbench = ReturnType<typeof usePuzzleWorkbench>;

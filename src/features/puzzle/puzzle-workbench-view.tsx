@@ -1,7 +1,8 @@
-import { ArrowRight, ArrowUp, Bomb, Check, ChevronRight, Compass, Eraser, Layers3, Pencil, RotateCcw, Shield, Sparkles, Swords, Trophy } from "lucide-react";
+import { ArrowRight, ArrowUp, Bomb, Circle, Check, ChevronRight, Compass, Eraser, Layers3, Pencil, RotateCcw, Shield, Sparkles, Swords, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COLS, ROWS } from "@/domain/puzzle/engine";
 import { PuzzleBoard } from "./components/puzzle-board";
+import { RecordingControls } from "./components/recording-controls";
 import { SearchControls } from "./components/search-controls";
 import { usePuzzleWorkbench } from "./use-puzzle-workbench";
 
@@ -13,7 +14,7 @@ const tools = [
 
 export function PuzzleWorkbenchView() {
   const game = usePuzzleWorkbench();
-  const { tool, setTool, turnsSurvived, setTurn, rowsDestroyed, status, animating, refilling, nextValid, nextFilled, movedThisTurn, canAdvance, forcedPush, analysis, ranked, selected, setSelected, compute, advanceTurn, applyMove, clearBoard } = game;
+  const { tool, setTool, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed, score, setScore, commitScore, trackScore, recorder, status, animating, refilling, nextValid, nextFilled, movedThisTurn, canAdvance, forcedPush, analysis, ranked, selected, setSelected, compute, advanceTurn, applyMove, clearBoard } = game;
   const guidance = forcedPush
     ? "Refill required. Push Next Rows until three rows are occupied."
     : !nextValid
@@ -64,12 +65,21 @@ export function PuzzleWorkbenchView() {
             <div className="section-heading"><Trophy className="size-4" /><h2>Simulation</h2><span>02</span></div>
             <div className="simulation-stats">
               <div title="Set this when joining a game in progress; it drives the difficulty the model expects"><input id="turns-survived" type="number" min={0} step={1} value={turnsSurvived} onChange={(event) => setTurn(Number(event.target.value))} disabled={animating} aria-label="Turns survived" className="stat-value w-full max-w-24 border-b border-dashed border-border bg-transparent outline-none focus:border-primary" /><label htmlFor="turns-survived" className="stat-label">Turns survived · editable</label></div>
-              <div><span className="stat-value text-accent">{String(rowsDestroyed).padStart(2, "0")}</span><span className="stat-label">Rows destroyed</span></div>
+              <div title="Restore this after a page reload; recordings also store the rows destroyed each turn"><input id="rows-destroyed" type="number" min={0} step={1} value={rowsDestroyed} onChange={(event) => setRowsDestroyed(Number(event.target.value))} disabled={animating} aria-label="Rows destroyed" className="stat-value w-full max-w-24 border-b border-dashed border-border bg-transparent text-accent outline-none focus:border-primary" /><label htmlFor="rows-destroyed" className="stat-label">Rows destroyed · editable</label></div>
             </div>
+            {recorder.recording && trackScore ? (
+              <div className="simulation-stats" style={{ paddingTop: 0 }}>
+                <div title="The game's score after this round; update it before pushing the row"><input id="game-score" type="number" min={0} step={1} value={score} onChange={(event) => setScore(Number(event.target.value))} onBlur={commitScore} disabled={animating} aria-label="Game score" className="stat-value w-full border-b border-dashed border-border bg-transparent outline-none focus:border-primary" /><label htmlFor="game-score" className="stat-label">Game score · after round</label></div>
+              </div>
+            ) : null}
             <div className="guidance" role="status"><Shield className="size-4 shrink-0 text-primary" /><p>{guidance}</p></div>
             <SearchControls workbench={game} />
             <Button onClick={compute} disabled={animating || forcedPush} variant="outline" className="mt-4 h-11 w-full"><Sparkles />Compute Optimal</Button>
             <Button onClick={advanceTurn} disabled={animating || !canAdvance} className="mt-2 h-11 w-full">{animating ? "Resolving…" : forcedPush ? "Push Next Row" : "Advance Turn"}<ArrowUp /></Button>
+          </section>
+          <section className="rail-section mt-8">
+            <div className="section-heading"><Circle className="size-4" /><h2>Recording</h2><span>04</span></div>
+            <RecordingControls workbench={game} />
           </section>
           <div className="mt-7 flex items-center justify-between border-t border-border pt-4 text-[10px] text-muted-foreground"><span>Encounter status</span><span className={status === "lost" ? "text-destructive" : "text-primary"}>{status === "lost" ? "Topped out" : animating ? "Resolving" : "Ready"}</span></div>
         </aside>

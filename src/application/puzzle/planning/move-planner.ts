@@ -3,6 +3,7 @@ import {
   type Move,
   type PlayerMoveResult,
   type RowCell,
+  hideBombs,
   legalMoves,
   resolvePlayerMove,
 } from "@/domain/puzzle/engine";
@@ -57,6 +58,10 @@ export function refillRowSource(
  * Scores every legal move one player-move ahead: the known incoming row is
  * played, forced refills are sampled, and the resulting decision point is valued
  * by `valueModel`. `turn` is the number of rows pushed before this move.
+ *
+ * Bombs in `incoming` are ignored: the player can't see them before the row is
+ * pushed, so plans (and training targets) never rely on them. Re-resolve the
+ * chosen move against the real row to get the actual outcome.
  */
 export function planMoves(
   blocks: Block[],
@@ -66,11 +71,12 @@ export function planMoves(
   seed: number,
   options: MovePlannerOptions = DEFAULT_PLANNER_OPTIONS,
 ): PlannedMove[] {
+  const visible = hideBombs(incoming);
   const evaluate = (move: Move, sample: number) => {
     const result = resolvePlayerMove(
       blocks,
       move,
-      incoming,
+      visible,
       refillRowSource(seed, sample, turn + 1, options.rowGeneration),
     );
     const valueAfter = result.lost ? 0 : valueModel.evaluate(result.blocks, turn + result.steps.length);

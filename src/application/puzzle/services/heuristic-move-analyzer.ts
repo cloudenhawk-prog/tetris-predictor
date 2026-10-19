@@ -2,6 +2,7 @@ import {
   type Block,
   type RowCell,
   boardStats,
+  hideBombs,
   legalMoves,
   playTurn,
 } from "@/domain/puzzle/engine";
@@ -17,8 +18,9 @@ export class HeuristicMoveAnalyzer implements PuzzleMoveAnalyzer {
   constructor(private readonly scoringModel: MoveScoringModel) {}
 
   evaluateMoves(blocks: Block[], incoming: RowCell[]): ScoredMove[] {
+    const visible = hideBombs(incoming);
     const scored = legalMoves(blocks).map((move) => {
-      const result = playTurn(blocks, move, incoming);
+      const result = playTurn(blocks, move, visible);
       const stats = boardStats(result.blocks);
       const block = blocks.find((candidate) => candidate.id === move.blockId) ?? null;
 

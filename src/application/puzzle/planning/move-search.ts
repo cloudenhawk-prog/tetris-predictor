@@ -1,4 +1,4 @@
-import type { Block, RowCell } from "@/domain/puzzle/engine";
+import { type Block, type RowCell, resolvePlayerMove } from "@/domain/puzzle/engine";
 import { createRng, generateRow } from "@/domain/puzzle/row-generator";
 import type { BoardValueModel } from "@/application/puzzle/contracts/move-analysis";
 import {
@@ -6,6 +6,7 @@ import {
   type MovePlannerOptions,
   type PlannedMove,
   planMoves,
+  refillRowSource,
 } from "@/application/puzzle/planning/move-planner";
 import { moveReturn } from "@/application/puzzle/planning/return-model";
 
@@ -75,8 +76,13 @@ export function* searchMoves(
       let future = 0;
       let factor = 1;
       for (let d = 0; d < options.depth; d++) {
-        const replies = planMoves(board, generateRow(rows, t, planner.rowGeneration), t, valueModel, roundSeed + d, replyPlanner);
+        const row = generateRow(rows, t, planner.rowGeneration);
+        const replies = planMoves(board, row, t, valueModel, roundSeed + d, replyPlanner);
         const best = replies.reduce((a, b) => (b.value > a.value ? b : a));
+        // The reply was chosen without seeing bombs; play it against the real row.
+        if (row.some((cell) => cell.bomb)) {
+          best.result = resolvePlayerMove(board, best.move, row, refillRowSource(roundSeed + d, 0, t + 1, planner.rowGeneration));
+        }
         if (d === options.depth - 1 || best.result.lost) {
           future += factor * best.value;
           break;

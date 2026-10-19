@@ -1,6 +1,6 @@
-import { type Block, legalMoves, playTurn } from "@/domain/puzzle/engine";
+import { type Block, legalMoves, playTurn, resolvePlayerMove } from "@/domain/puzzle/engine";
 import { type Rng, generateRow } from "@/domain/puzzle/row-generator";
-import { type MovePlannerOptions, planMoves } from "@/application/puzzle/planning/move-planner";
+import { type MovePlannerOptions, planMoves, refillRowSource } from "@/application/puzzle/planning/move-planner";
 import type { NeuralBoardValueModel } from "@/infrastructure/puzzle/value-network/neural-board-value-model";
 import { BOARD_INPUT_SIZE } from "@/infrastructure/puzzle/value-network/board-encoder";
 import { pickBest, refillUntilPlayable } from "@/training/game-simulation";
@@ -65,14 +65,9 @@ export class SelfPlayGenerator {
     for (let n = 0; n < count; ) {
       const episode = (this.episode ??= this.startEpisode());
       const incoming = generateRow(this.rng, episode.turn, rows);
-      const planned = planMoves(
-        episode.blocks,
-        incoming,
-        episode.turn,
-        this.model,
-        Math.floor(this.rng() * 2 ** 32),
-        this.config.planner,
-      );
+      const seed = Math.floor(this.rng() * 2 ** 32);
+      // Planning (and so the target) can't see bombs in the incoming row.
+      const planned = planMoves(episode.blocks, incoming, episode.turn, this.model, seed, this.config.planner);
       const best = pickBest(planned, this.rng);
       if (!best) {
         this.endEpisode(episode, false);
@@ -84,10 +79,14 @@ export class SelfPlayGenerator {
       n++;
 
       const chosen = this.rng() < epsilon ? planned[Math.floor(this.rng() * planned.length)] ?? best : best;
-      episode.blocks = chosen.result.blocks;
-      episode.turn += chosen.result.steps.length;
-      episode.cleared += chosen.result.cleared;
-      if (chosen.result.lost) this.endEpisode(episode, true);
+      // The real row reveals its bombs once pushed.
+      const result = incoming.some((cell) => cell.bomb)
+        ? resolvePlayerMove(episode.blocks, chosen.move, incoming, refillRowSource(seed, 0, episode.turn + 1, rows))
+        : chosen.result;
+      episode.blocks = result.blocks;
+      episode.turn += result.steps.length;
+      episode.cleared += result.cleared;
+      if (result.lost) this.endEpisode(episode, true);
       else if (episode.turn - episode.startTurn >= this.config.maxEpisodeTurns) this.endEpisode(episode, false);
     }
 

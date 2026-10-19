@@ -46,4 +46,15 @@ describe("generateRow", () => {
     };
     expect(meanWidth(schedule.rampEndTurn)).toBeGreaterThan(meanWidth(0) + 0.2);
   });
+
+  test("about one bomb per 80 rows, at most one per row, never on a 4-wide block", () => {
+    const rng = createRng(21);
+    const rows = Array.from({ length: 40_000 }, (_, i) => generateRow(rng, i % 400));
+    const bombs = rows.map((row) => row.filter((cell) => cell.bomb));
+    expect(bombs.every((b) => b.length <= 1)).toBe(true);
+    expect(bombs.flat().every((cell) => cell.w < 4)).toBe(true);
+    const rate = bombs.filter((b) => b.length > 0).length / rows.length;
+    expect(rate).toBeGreaterThan(0.8 / 80);
+    expect(rate).toBeLessThan(1.2 / 80);
+  });
 });
