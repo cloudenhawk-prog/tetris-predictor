@@ -4,7 +4,7 @@ import { COLS, ROWS } from "@/domain/puzzle/engine";
 import { PuzzleBoard } from "./components/puzzle-board";
 import { RecordingControls } from "./components/recording-controls";
 import { SearchControls } from "./components/search-controls";
-import { SplitPanel } from "./components/split-panel";
+import { SplitAlert } from "./components/split-alert";
 import { usePuzzleWorkbench } from "./use-puzzle-workbench";
 
 const tools = [
@@ -76,7 +76,7 @@ export function PuzzleWorkbenchView() {
             ) : null}
             <div className="guidance" role="status"><Shield className="size-4 shrink-0 text-primary" /><p>{guidance}</p></div>
             <SearchControls workbench={game} />
-            <Button onClick={compute} disabled={animating || forcedPush} variant="outline" className="mt-4 h-11 w-full"><Sparkles />Compute Optimal</Button>
+            <Button onClick={compute} disabled={animating || forcedPush || !nextValid} variant="outline" className="mt-4 h-11 w-full"><Sparkles />Compute Optimal</Button>
             <Button onClick={advanceTurn} disabled={animating || !canAdvance} className="mt-2 h-11 w-full">{animating ? "Resolving…" : forcedPush ? "Push Next Row" : "Advance Turn"}<ArrowUp /></Button>
           </section>
           <section className="rail-section mt-8">
@@ -88,6 +88,7 @@ export function PuzzleWorkbenchView() {
 
         <section className="board-stage" aria-label="Puzzle board">
           <div className="board-title"><span className="flex items-center gap-2"><Swords className="size-4 text-primary" />The field</span><span className="font-mono text-[10px] text-muted-foreground">{COLS} × {ROWS}</span></div>
+          <SplitAlert workbench={game} />
           <PuzzleBoard workbench={game} />
           <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-muted-foreground"><span className="h-px w-6 bg-border" /><span>Rising-row puzzle</span><span className="h-px w-6 bg-border" /></div>
         </section>
@@ -109,7 +110,6 @@ export function PuzzleWorkbenchView() {
               ))}
             </div>
           )}
-          <SplitPanel workbench={game} />
           <div className="analysis-summary"><div><span>Moves considered</span><span className="font-mono text-foreground">{analysis?.length ?? "—"}</span></div><div><span>Best clearances</span><span className="font-mono text-foreground">{ranked[0]?.cleared ?? "—"}</span></div></div>
         </aside>
       </main>

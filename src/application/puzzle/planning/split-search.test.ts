@@ -8,6 +8,8 @@ import {
   searchSplits,
   shouldCheckSplits,
 } from "@/application/puzzle/planning/split-search";
+import { bestRescueSplit } from "@/application/puzzle/planning/move-search";
+import { planMoves } from "@/application/puzzle/planning/move-planner";
 import { type Block, ROWS, freeRows, isRefillRequired, reserveIds, settle, splitBlock } from "@/domain/puzzle/engine";
 
 const B = ROWS - 1; // bottom row
@@ -76,17 +78,19 @@ describe("searchSplits", () => {
 describe("adviseSplit", () => {
   const option = (overrides: Partial<SplitOption>): SplitOption => ({
     block: { id: 1, row: B, col: 0, w: 3 },
-    // Five free rows by default would block preemptive advice; keep the stack high.
+    // Two free rows: crowded enough to consider splitting ahead of time.
     board: [{ id: 5, row: 2, col: 0, w: 1 }],
     cleared: 0,
-    value: 10,
-    baseValue: 10,
+    value: 40,
+    baseValue: 40,
     lossRisk: 0,
+    rescueRate: 0,
     samples: 20,
     doomed: false,
     ...overrides,
   });
   const baseline = (overrides: Partial<SplitOption>) => option({ block: null, ...overrides });
+  const { splitCost, minAdvantage } = DEFAULT_SPLIT_POLICY;
 
   test("rescues a lost position with the best split that survives", () => {
     const advice = adviseSplit({
@@ -97,16 +101,25 @@ describe("adviseSplit", () => {
     expect(advice.kind !== "none" && advice.option.block?.id).toBe(2);
   });
 
-  test("advises splitting ahead of time only when crowded, in danger and clearly better", () => {
-    const danger = baseline({ value: 6, lossRisk: 0.6 });
-    expect(adviseSplit({ baseline: danger, splits: [option({ value: 14, lossRisk: 0.1 })] }).kind).toBe("preempt");
-    // Not enough gain.
-    expect(adviseSplit({ baseline: danger, splits: [option({ value: 8, lossRisk: 0.1 })] }).kind).toBe("none");
-    // Not in danger.
-    expect(adviseSplit({ baseline: baseline({ value: 6, lossRisk: 0.1 }), splits: [option({ value: 14, lossRisk: 0 })] }).kind).toBe("none");
-    // Not crowded.
-    const roomy = baseline({ value: 6, lossRisk: 0.6, board: [{ id: 5, row: B, col: 0, w: 1 }] });
-    expect(adviseSplit({ baseline: roomy, splits: [option({ value: 14, lossRisk: 0.1 })] }).kind).toBe("none");
+  test("splits ahead of time only when it beats waiting with the split kept as a last resort", () => {
+    // Waiting loses half the time: splitting now (no later splits needed) wins easily.
+    const losing = baseline({ value: 25, lossRisk: 0.5 });
+    expect(adviseSplit({ baseline: losing, splits: [option({ value: 45 })] }).kind).toBe("preempt");
+    // Waiting needs the split later in 90% of futures but then does as well: no reason to split now.
+    const lastResort = baseline({ value: 45, rescueRate: 0.9 });
+    expect(adviseSplit({ baseline: lastResort, splits: [option({ value: 45 })] }).kind).toBe("none");
+    // Splitting now must cover its cost plus the margin, net of what waiting expects to spend.
+    const edge = 40 + splitCost * (1 - 0.5) + minAdvantage;
+    const halfRescued = baseline({ value: 40, rescueRate: 0.5 });
+    expect(adviseSplit({ baseline: halfRescued, splits: [option({ value: edge - 0.1 })] }).kind).toBe("none");
+    expect(adviseSplit({ baseline: halfRescued, splits: [option({ value: edge + 0.1 })] }).kind).toBe("preempt");
+  });
+
+  test("stays quiet when not crowded or not in trouble", () => {
+    const split = option({ value: 50 });
+    expect(adviseSplit({ baseline: baseline({ value: 10, lossRisk: 0.1 }), splits: [split] }).kind).toBe("none");
+    const roomy = baseline({ value: 10, lossRisk: 0.9, board: [{ id: 5, row: B, col: 0, w: 1 }] });
+    expect(adviseSplit({ baseline: roomy, splits: [split] }).kind).toBe("none");
   });
 
   test("only checks splits when every move loses or the board is crowded", () => {
@@ -116,5 +129,29 @@ describe("adviseSplit", () => {
     expect(shouldCheckSplits(low, false)).toBe(false);
     expect(shouldCheckSplits(low, true)).toBe(true);
     expect(shouldCheckSplits(high, false)).toBe(true);
+  });
+});
+
+describe("bestRescueSplit", () => {
+  // From a simulated late game: every move tops out against this row, but a split saves it.
+  const doomedBoard: Block[] = [
+    [9, 0, 3], [9, 4, 1], [9, 5, 3], [8, 0, 4], [8, 5, 1], [8, 7, 1], [7, 3, 1], [7, 0, 2], [7, 2, 1],
+    [7, 4, 3], [6, 0, 3], [6, 5, 3], [6, 4, 1], [5, 1, 3], [5, 6, 1], [5, 7, 1], [4, 2, 3], [4, 5, 3],
+    [3, 0, 3], [3, 3, 1], [3, 5, 2], [2, 1, 3], [2, 4, 4], [1, 0, 4], [1, 4, 2], [1, 6, 1],
+  ].map(([row, col, w], i) => ({ id: 200 + i, row: row!, col: col!, w: w! }));
+  const row = [{ id: 300, col: 1, w: 2 }, { id: 301, col: 4, w: 3 }, { id: 302, col: 7, w: 1 }];
+
+  test("finds the split that saves a doomed position", () => {
+    expect(planMoves(doomedBoard, row, 300, lowStack, 1).every((m) => m.result.lost)).toBe(true);
+    const rescue = bestRescueSplit(doomedBoard, row, 300, lowStack, 1);
+    expect(rescue?.planned.result.lost).toBe(false);
+  });
+
+  test("the split check advises it as a rescue", () => {
+    const analysis = searchSplits(doomedBoard, row, 300, lowStack, 1, { candidates: 3, depth: 2, splits: 2 }).next().value as SplitAnalysis;
+    expect(analysis.baseline.doomed).toBe(true);
+    const advice = adviseSplit(analysis);
+    expect(advice.kind).toBe("rescue");
+    expect(advice.kind === "rescue" && advice.option.doomed).toBe(false);
   });
 });

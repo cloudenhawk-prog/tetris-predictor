@@ -13,6 +13,10 @@ const CLEAR_MS = 1100;
 const CLEAR_GAP_MS = 450;
 export const LIFT_MS = 1000;
 export const ROWS_PER_SECOND = 3;
+// Danger can't be judged without simulated futures, whatever the Think time setting.
+const SPLIT_MIN_THINK_MS = 2000;
+// Wait for the board and Next Row to stop changing before checking for danger.
+const SPLIT_CHECK_DELAY_MS = 700;
 
 type Tool = "draw" | "erase" | "bomb" | "split";
 type DragState = {
@@ -29,8 +33,8 @@ type MotionBlock = Block & { travelRows: number; motion: "fall" | "lift" };
 export type SearchSettings = { thinkSeconds: number; depth: number; candidates: number };
 export const DEFAULT_SEARCH_SETTINGS: SearchSettings = { thinkSeconds: 2, depth: 3, candidates: 6 };
 type SearchProgress = { samples: number; elapsedMs: number; thinkMs: number; done: boolean; warning?: string };
-/** Split options for the current board; `auto` when the danger check started it after a move search. */
-export type SplitCheck = SearchProgress & { analysis: SplitAnalysis | null; advice: SplitAdvice | null; auto: boolean };
+/** The danger check: whether to use the split power-up before this turn's move. */
+type SplitCheck = SearchProgress & { analysis: SplitAnalysis | null; advice: SplitAdvice | null };
 
 const TRACK_SCORE_KEY = "tetris-predictor.recording.track-score";
 
@@ -50,8 +54,6 @@ export function usePuzzleWorkbench() {
   const [searchSettings, setSearchSettings] = useState<SearchSettings>(DEFAULT_SEARCH_SETTINGS);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
   const [splitCheck, setSplitCheck] = useState<SplitCheck | null>(null);
-  // Block highlighted on the board while hovering a split option.
-  const [splitPreviewId, setSplitPreviewId] = useState<number | null>(null);
   const selectedKeyRef = useRef<string | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [nextRow, setNextRow] = useState<RowCell[]>([]);
@@ -143,7 +145,6 @@ export function usePuzzleWorkbench() {
     searchRef.current?.cancel();
     setSearchProgress(null);
     setSplitCheck(null);
-    setSplitPreviewId(null);
     setAnalysis(null);
     setSelected(0);
     selectedKeyRef.current = null;
@@ -303,6 +304,7 @@ export function usePuzzleWorkbench() {
 
   /** `board` defaults to the shown board; pass it when the state hasn't caught up yet (right after a split). */
   const compute = (board: Block[] = blocks) => {
+    if (!nextValid) return;
     const thinkMs = searchSettings.thinkSeconds * 1000;
     selectedKeyRef.current = null;
     setSelected(0);
@@ -324,16 +326,15 @@ export function usePuzzleWorkbench() {
         setSearchProgress({ samples: update.samples, elapsedMs: update.elapsedMs, thinkMs, done: update.done, warning: update.warning });
         // Danger check: when no move survives, or the board is crowded, look for a split worth using.
         const everyMoveLoses = analyzed.moves.length > 0 && analyzed.moves.every((m) => m.lost);
-        if (update.done && analyzed.moves.length > 0 && shouldCheckSplits(board, everyMoveLoses)) checkSplits(board, true);
+        if (update.done && analyzed.moves.length > 0 && shouldCheckSplits(board, everyMoveLoses)) checkSplits(board);
       },
     );
   };
 
   /** Values splitting each block before this turn's move against not splitting (see `searchSplits`). */
-  const checkSplits = (board: Block[] = blocks, auto = false) => {
-    const thinkMs = searchSettings.thinkSeconds * 1000;
-    const progress = { samples: 0, elapsedMs: 0, thinkMs, done: false };
-    setSplitCheck({ ...progress, analysis: null, advice: null, auto });
+  const checkSplits = (board: Block[] = blocks) => {
+    const thinkMs = Math.max(SPLIT_MIN_THINK_MS, searchSettings.thinkSeconds * 1000);
+    setSplitCheck({ samples: 0, elapsedMs: 0, thinkMs, done: false, analysis: null, advice: null });
     searchClient().searchSplits(
       {
         blocks: board,
@@ -354,11 +355,24 @@ export function usePuzzleWorkbench() {
           analysis: update.analysis,
           // Judged on the final numbers only, so the advice doesn't flicker while samples come in.
           advice: update.done && update.analysis ? adviseSplit(update.analysis) : null,
-          auto,
         });
       },
     );
   };
+
+  // Danger check on its own: once a crowded board and a valid Next Row are entered,
+  // look for a split worth using, unless a search is already running or done.
+  const idleForSplitCheck = canSplit && nextValid && !forcedPush && splitCheck === null && searchProgress === null;
+  useEffect(() => {
+    if (!idleForSplitCheck || !shouldCheckSplits(blocks, false)) return;
+    const timer = setTimeout(() => checkSplits(blocks), SPLIT_CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [idleForSplitCheck, blocks, nextRow, turnsSurvived]);
+
+  /** Shown only when the check advises splitting: no move survives, or splitting now clearly beats waiting. */
+  const splitAdvice = splitCheck?.done && splitCheck.advice && splitCheck.advice.kind !== "none" ? splitCheck.advice : null;
+  const dismissSplitAdvice = () =>
+    setSplitCheck((current) => (current ? { ...current, advice: { kind: "none", reason: "Dismissed." } } : current));
 
   /**
    * The split power-up: the block becomes 1-wide blocks and the board settles at
@@ -559,7 +573,7 @@ export function usePuzzleWorkbench() {
     resetAnalysis();
   };
 
-  return { splitCheck, checkSplits: () => checkSplits(), splitAt, canSplit, splitPreviewId, setSplitPreviewId, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, compute: () => compute(), applyMove, advanceTurn, clearBoard };
+  return { splitCheck, splitAdvice, dismissSplitAdvice, splitAt, canSplit, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, compute: () => compute(), applyMove, advanceTurn, clearBoard };
 }
 
 export type PuzzleWorkbench = ReturnType<typeof usePuzzleWorkbench>;

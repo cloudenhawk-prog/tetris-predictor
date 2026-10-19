@@ -8,7 +8,7 @@ const BLOCK_TONES = ["bg-block-1", "bg-block-2", "bg-block-3", "bg-block-4"];
 const toneFor = (width: number) => BLOCK_TONES[(width - 1) % BLOCK_TONES.length];
 
 export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
-  const { splitPreviewId, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer } = workbench;
+  const { splitAdvice, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer } = workbench;
   return (
           <div className="board-frame">
             <div className="board-opening relative overflow-hidden border border-border-strong bg-secondary p-1">
@@ -110,7 +110,8 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   </div>
                 ) : null}
                 {(() => {
-                  const target = splitPreviewId === null ? undefined : blocks.find((b) => b.id === splitPreviewId);
+                  const advisedId = splitAdvice?.option.block?.id;
+                  const target = advisedId === undefined ? undefined : blocks.find((b) => b.id === advisedId);
                   return target ? (
                     <div
                       className="z-20 flex items-center justify-center gap-1 rounded-[3px] border-2 border-dashed border-primary-bright bg-primary/20"
@@ -195,7 +196,7 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   {!lifting ? nextRow.map((r) => (
                     <div
                       key={r.id}
-                       className={`rune-block flex items-center justify-center rounded-[3px] bg-block-2 ${movePreview?.zone === "next" && movePreview.block.id === r.id && movePreview.targetCol !== r.col ? "opacity-30" : ""}`}
+                       className={`rune-block flex items-center justify-center rounded-[3px] ${toneFor(r.w)} ${movePreview?.zone === "next" && movePreview.block.id === r.id && movePreview.targetCol !== r.col ? "opacity-30" : ""}`}
                       style={{ gridColumn: `${r.col + 1} / span ${r.w}`, gridRow: 1 }}
                      >
                        {r.bomb ? <Bomb className="size-5 text-background" strokeWidth={2.4} /> : null}
@@ -203,10 +204,10 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   )) : null}
                   {movePreview?.zone === "next" && movePreview.targetCol !== movePreview.block.col ? (
                     <div
-                      className="z-30 flex items-center justify-center rounded-[3px] border-2 border-dashed border-primary-bright/90 bg-block-2 opacity-75"
+                      className={`z-30 flex items-center justify-center rounded-[3px] border-2 border-dashed border-primary-bright/90 opacity-75 ${toneFor(movePreview.block.w)}`}
                       style={{ gridColumn: `${movePreview.targetCol + 1} / span ${movePreview.block.w}`, gridRow: 1 }}
                     >
-                      <MoveHorizontal className="size-4 text-accent-foreground" />
+                      <MoveHorizontal className="size-4 text-primary-foreground" />
                     </div>
                   ) : null}
                   {hoveredNextBlock && !drag ? (
@@ -221,7 +222,7 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                     <div
                       className={`z-30 flex items-center justify-center rounded-[3px] border-2 border-dashed font-mono text-[9px] font-bold ${
                         dragPreview.valid
-                          ? "border-primary-bright/90 bg-block-2 text-accent-foreground"
+                          ? `${toneFor(dragPreview.width)} border-primary-bright/90 opacity-70 text-primary-foreground`
                           : "border-destructive bg-destructive/20 text-destructive"
                       }`}
                       style={{ gridColumn: `${dragPreview.col + 1} / span ${dragPreview.width}`, gridRow: 1 }}

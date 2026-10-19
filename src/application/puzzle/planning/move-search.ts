@@ -1,10 +1,11 @@
-import { type Block, type RowCell, resolvePlayerMove } from "@/domain/puzzle/engine";
+import { type Block, HOLD, type RowCell, isRefillRequired, resolvePlayerMove, settle, splitBlock } from "@/domain/puzzle/engine";
 import { createRng, generateRow } from "@/domain/puzzle/row-generator";
 import type { BoardValueModel } from "@/application/puzzle/contracts/move-analysis";
 import {
   DEFAULT_PLANNER_OPTIONS,
   type MovePlannerOptions,
   type PlannedMove,
+  planMove,
   planMoves,
   refillRowSource,
 } from "@/application/puzzle/planning/move-planner";
@@ -20,6 +21,11 @@ export interface MoveSearchOptions {
    * comparing boards (`searchSplits`) needs every board's value and loss risk.
    */
   searchAlone?: boolean;
+  /**
+   * The simulated player may use the split power-up once per future, as a last
+   * resort: when no reply survives a sampled row (see `bestRescueSplit`).
+   */
+  rescueSplits?: boolean;
 }
 
 export const DEFAULT_SEARCH_OPTIONS: MoveSearchOptions = { candidates: 6, depth: 3 };
@@ -31,6 +37,34 @@ export interface SearchedMove extends PlannedMove {
   samples: number;
   /** Simulated futures in which the game was lost within the lookahead. */
   losses: number;
+  /** Simulated futures that needed a last-resort split (with `rescueSplits`). */
+  rescues: number;
+}
+
+/**
+ * The split that saves a doomed decision point: of every block worth splitting,
+ * the one whose settled board has the best surviving move. Null when none saves it.
+ */
+export function bestRescueSplit(
+  blocks: Block[],
+  incoming: RowCell[],
+  turn: number,
+  valueModel: BoardValueModel,
+  seed: number,
+  planner: MovePlannerOptions = DEFAULT_PLANNER_OPTIONS,
+): { board: Block[]; planned: PlannedMove } | null {
+  let rescue: { board: Block[]; planned: PlannedMove } | null = null;
+  for (const block of blocks) {
+    if (block.w <= 1) continue;
+    const board = settle(splitBlock(blocks, block.id)).blocks;
+    const options = isRefillRequired(board, false)
+      ? [planMove(board, HOLD, incoming, turn, valueModel, seed, planner)]
+      : planMoves(board, incoming, turn, valueModel, seed, planner);
+    for (const planned of options) {
+      if (!planned.result.lost && (!rescue || planned.value > rescue.planned.value)) rescue = { board, planned };
+    }
+  }
+  return rescue;
 }
 
 /**
@@ -58,6 +92,7 @@ export function* searchMoves(
     baseValue: p.value,
     samples: 0,
     losses: 0,
+    rescues: 0,
   }));
   const ranked = () =>
     [...moves].sort((a, b) =>
@@ -83,10 +118,20 @@ export function* searchMoves(
       let t = turn + candidate.result.steps.length;
       let future = 0;
       let factor = 1;
+      let rescued = false;
       for (let d = 0; d < options.depth; d++) {
         const row = generateRow(rows, t, planner.rowGeneration);
         const replies = planMoves(board, row, t, valueModel, roundSeed + d, replyPlanner);
-        const best = replies.reduce((a, b) => (b.value > a.value ? b : a));
+        let best = replies.reduce((a, b) => (b.value > a.value ? b : a));
+        if (best.result.lost && options.rescueSplits && !rescued) {
+          const rescue = bestRescueSplit(board, row, t, valueModel, roundSeed + d, replyPlanner);
+          if (rescue) {
+            rescued = true;
+            candidate.rescues++;
+            board = rescue.board;
+            best = rescue.planned;
+          }
+        }
         // The reply was chosen without seeing bombs; play it against the real row.
         if (row.some((cell) => cell.bomb)) {
           best.result = resolvePlayerMove(board, best.move, row, refillRowSource(roundSeed + d, 0, t + 1, planner.rowGeneration));

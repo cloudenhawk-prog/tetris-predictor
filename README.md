@@ -90,19 +90,22 @@ a bomb's pieces stay bombs). It is not a turn: the board settles at once (gravit
 stable), the round doesn't advance, and a move is still required. It can be used any number of
 times, but it's costly, so the tool only advises it when it clearly pays off.
 
-- **Use it:** pick the **Split** tool in the Board editor and click a block, or press **Split** on an
-  option in the Split power-up panel (the analysis then reruns on the new board). Splitting is blocked
-  once a block has been slid this turn. Recordings log each split as a `block-split` event.
-- **Which block:** `searchSplits` (`src/application/puzzle/planning/split-search.ts`) values every
+- **Use it:** pick the **Split** tool in the Board editor and click a block, or press **Split this
+  block** on the alert above the board (the analysis then reruns on the new board). Splitting is
+  blocked once a block has been slid this turn. Recordings log each split as a `block-split` event.
+- **When you're told to:** a danger check runs on its own once a crowded board (fewer than 5 free
+  rows) and a valid Next Row are entered, and again after Compute Optimal. Nothing is shown unless it
+  advises a split:
+  - *Rescue*: no move survives the Next Row, and a split does.
+  - *Split now*: the board is crowded, the best plain move loses or needs a last-resort split in at
+    least 30% of simulated futures, and splitting now beats **waiting** by at least 3 value after
+    split costs (`DEFAULT_SPLIT_POLICY`, 5 value per split).
+- **How it compares:** `searchSplits` (`src/application/puzzle/planning/split-search.ts`) values every
   splittable block like a decision point: the split board settled, then the best move against the
-  known Next Row. The network ranks them; the baseline (no split) and the top 4 get simulated futures,
-  which also give each option's loss risk (share of futures lost within the lookahead).
-- **When:** after Compute Optimal, the split check runs on its own when no move survives the Next
-  Row, or when fewer than 5 rows are free (stack more than half the board). **Check splits** runs it
-  on demand. It advises a split when no move survives (*rescue*), or ahead of time (*preempt*) only
-  if all of these hold (`DEFAULT_SPLIT_POLICY`): fewer than 5 free rows, the best plain move loses in
-  at least 30% of futures, and the split adds at least 4 value and cuts the loss risk by at least
-  20 points.
+  known Next Row. The baseline (no split) and the top 4 splits get simulated futures in which the
+  player may still split once as a last resort (`rescueSplits` in `searchMoves`). So "don't split
+  now" means "wait, and split only if it comes to that": a split that would be needed next turn
+  anyway isn't advised early, since waiting keeps the chance of never needing it.
 
 ### Difficulty schedule
 
