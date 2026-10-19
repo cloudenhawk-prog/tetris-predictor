@@ -31,8 +31,13 @@ export interface RecordedTurn {
   kind: "player" | "forced";
   /** Decision-point board as entered, before the move (after any manual corrections). */
   board: RecordedBlock[];
-  /** True when `board` differs from the previous turn's `boardAfter` (the board was corrected by hand). */
+  /**
+   * True when `board` differs from the previous turn's `boardAfter` (the board was corrected by hand).
+   * Splits are not edits: the board is compared with the last split's `boardAfter` instead.
+   */
   boardEdited: boolean;
+  /** Split power-ups used before this turn's move (see the "block-split" events). Absent when none. */
+  splits?: number;
   move: RecordedMove | null;
   /** How the move was made: by hand, or with "Apply & advance" on a ranked move. */
   moveSource: "manual" | "applied" | "none";
@@ -72,6 +77,21 @@ export type RecordingEvent = { at: string } & (
   /** The Score counter was edited (logged when the field loses focus), after `turnsRecorded` turns. */
   | { type: "score-set"; from: number; to: number; turnsRecorded: number }
   | { type: "score-tracking"; enabled: boolean; score: number }
+  /**
+   * The split power-up turned `block` into 1-wide blocks before the move of the
+   * next recorded turn (`turnsRecorded` turns so far); the board then settled
+   * through `clears` (not a turn) into `boardAfter`.
+   */
+  | {
+      type: "block-split";
+      turn: number;
+      turnsRecorded: number;
+      block: RecordedBlock;
+      source: "manual" | "advised";
+      clears: ClearStep[];
+      boardAfter: RecordedBlock[];
+      rowsDestroyedCounter: number;
+    }
 );
 
 /**

@@ -1,4 +1,4 @@
-import { ArrowUp, Bomb, Dices, MoveHorizontal, Trash2 } from "lucide-react";
+import { ArrowUp, Bomb, Dices, MoveHorizontal, Scissors, Trash2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { COLS, ROWS } from "@/domain/puzzle/engine";
@@ -8,7 +8,7 @@ const BLOCK_TONES = ["bg-block-1", "bg-block-2", "bg-block-3", "bg-block-4"];
 const toneFor = (width: number) => BLOCK_TONES[(width - 1) % BLOCK_TONES.length];
 
 export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
-  const { blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer } = workbench;
+  const { splitPreviewId, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer } = workbench;
   return (
           <div className="board-frame">
             <div className="board-opening relative overflow-hidden border border-border-strong bg-secondary p-1">
@@ -109,6 +109,17 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                     <MoveHorizontal className="size-4 text-primary-foreground" />
                   </div>
                 ) : null}
+                {(() => {
+                  const target = splitPreviewId === null ? undefined : blocks.find((b) => b.id === splitPreviewId);
+                  return target ? (
+                    <div
+                      className="z-20 flex items-center justify-center gap-1 rounded-[3px] border-2 border-dashed border-primary-bright bg-primary/20"
+                      style={{ gridColumn: `${target.col + 1} / span ${target.w}`, gridRow: `${target.row + 1}` }}
+                    >
+                      <Scissors className="size-4 text-foreground drop-shadow" />
+                    </div>
+                  ) : null;
+                })()}
                 {hoveredBoardBlock && !drag ? (
                   <div
                     className="z-20 flex items-center justify-center rounded-[3px] border-2 border-primary-bright bg-primary/10 shadow-[inset_0_0_0_1px_var(--color-background)]"

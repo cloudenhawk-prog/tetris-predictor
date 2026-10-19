@@ -1,5 +1,6 @@
 import type { Block, RowCell } from "@/domain/puzzle/engine";
 import type { ScoredMove } from "@/application/puzzle/contracts/move-analysis";
+import type { SplitAnalysis } from "@/application/puzzle/planning/split-search";
 
 export interface MoveSearchRequest {
   type: "search";
@@ -12,15 +13,30 @@ export interface MoveSearchRequest {
   candidates: number;
 }
 
-export type MoveSearchMessage = MoveSearchRequest | { type: "cancel" };
+/** Which block is best to split before this turn's move (see `searchSplits`). */
+export interface SplitSearchRequest extends Omit<MoveSearchRequest, "type"> {
+  type: "split-search";
+  /** Splits refined by simulated futures, besides not splitting. */
+  splits: number;
+}
 
-export interface MoveSearchUpdate {
+export type MoveSearchMessage = MoveSearchRequest | SplitSearchRequest | { type: "cancel" };
+
+interface SearchProgressUpdate {
   id: number;
-  moves: ScoredMove[];
   /** Futures simulated per searched candidate so far. */
   samples: number;
   elapsedMs: number;
   done: boolean;
   /** Set when the trained model could not be loaded and a fallback is used. */
   warning?: string;
+}
+
+export interface MoveSearchUpdate extends SearchProgressUpdate {
+  moves: ScoredMove[];
+}
+
+export interface SplitSearchUpdate extends SearchProgressUpdate {
+  /** Null only on a final update when the search produced nothing. */
+  analysis: SplitAnalysis | null;
 }

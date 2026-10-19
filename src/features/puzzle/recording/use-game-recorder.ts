@@ -124,6 +124,11 @@ export function useGameRecorder() {
     if (!current) return;
     const board = toRecordedBlocks(input.board);
     const previous = current.turns.at(-1);
+    const splits = current.events.filter(
+      (event) => event.type === "block-split" && event.turnsRecorded === current.turns.length,
+    );
+    const lastSplit = splits.at(-1);
+    const expectedBoard = lastSplit?.type === "block-split" ? lastSplit.boardAfter : previous?.boardAfter;
     const rankIndex = input.move && input.analysis
       ? input.analysis.findIndex((m) => m.move.blockId === input.move?.blockId && m.move.delta === input.move?.delta)
       : -1;
@@ -140,7 +145,8 @@ export function useGameRecorder() {
       at,
       kind: input.forced && !input.move ? "forced" : "player",
       board,
-      boardEdited: previous ? !sameRecordedBoard(previous.boardAfter, board) : false,
+      boardEdited: expectedBoard ? !sameRecordedBoard(expectedBoard, board) : false,
+      ...(splits.length > 0 ? { splits: splits.length } : {}),
       move: input.move ? (toRecordedMove(input.board, input.move) ?? null) : null,
       moveSource: input.move ? input.moveSource : "none",
       ...(rankIndex >= 0 ? { analysisRank: rankIndex + 1 } : {}),

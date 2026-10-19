@@ -19,6 +19,14 @@ export interface RowCell {
 let idCounter = 1;
 export const newId = () => idCounter++;
 
+/**
+ * Ids up to `id` are taken, e.g. by a board sent from another thread (each
+ * thread has its own counter); `newId` continues above them.
+ */
+export function reserveIds(id: number): void {
+  idCounter = Math.max(idCounter, id + 1);
+}
+
 export const cloneBlocks = (blocks: Block[]): Block[] => blocks.map((b) => ({ ...b }));
 
 /**
@@ -301,6 +309,30 @@ export function boardStats(blocks: Block[]): BoardStats {
     holes,
     bumpiness,
   };
+}
+
+/**
+ * The split power-up: a block becomes `w` blocks of width 1 in the same cells
+ * (a bomb's pieces stay bombs). It is not a turn; settle the result straight
+ * away (`settle`) to run gravity and clears until the board is stable.
+ */
+export function splitBlock(blocks: Block[], blockId: number): Block[] {
+  return blocks.flatMap((b) =>
+    b.id !== blockId || b.w <= 1
+      ? [{ ...b }]
+      : Array.from({ length: b.w }, (_, i) => ({
+          id: newId(),
+          row: b.row,
+          col: b.col + i,
+          w: 1,
+          ...(b.bomb === undefined ? {} : { bomb: b.bomb }),
+        })),
+  );
+}
+
+/** Empty rows above the highest block; a block reaching row 0 loses the game. */
+export function freeRows(blocks: Block[]): number {
+  return blocks.reduce((top, b) => Math.min(top, b.row), ROWS);
 }
 
 /** Once the board drops to one occupied row, rows keep spawning until this many are occupied. */

@@ -83,6 +83,27 @@ We don't train a separate model per board in the browser: a few seconds of singl
 training would be far weaker than the overall model, and the search uses that time on exactly
 this board instead.
 
+### Split power-up
+
+The game's split power-up turns one block into 1-wide blocks (a 4-wide block into four, and so on;
+a bomb's pieces stay bombs). It is not a turn: the board settles at once (gravity and clears until
+stable), the round doesn't advance, and a move is still required. It can be used any number of
+times, but it's costly, so the tool only advises it when it clearly pays off.
+
+- **Use it:** pick the **Split** tool in the Board editor and click a block, or press **Split** on an
+  option in the Split power-up panel (the analysis then reruns on the new board). Splitting is blocked
+  once a block has been slid this turn. Recordings log each split as a `block-split` event.
+- **Which block:** `searchSplits` (`src/application/puzzle/planning/split-search.ts`) values every
+  splittable block like a decision point: the split board settled, then the best move against the
+  known Next Row. The network ranks them; the baseline (no split) and the top 4 get simulated futures,
+  which also give each option's loss risk (share of futures lost within the lookahead).
+- **When:** after Compute Optimal, the split check runs on its own when no move survives the Next
+  Row, or when fewer than 5 rows are free (stack more than half the board). **Check splits** runs it
+  on demand. It advises a split when no move survives (*rescue*), or ahead of time (*preempt*) only
+  if all of these hold (`DEFAULT_SPLIT_POLICY`): fewer than 5 free rows, the best plain move loses in
+  at least 30% of futures, and the split adds at least 4 value and cuts the loss risk by at least
+  20 points.
+
 ### Difficulty schedule
 
 Incoming rows come from `src/domain/puzzle/row-generator.ts`. Block-width odds interpolate

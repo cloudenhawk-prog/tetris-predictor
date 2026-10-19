@@ -72,7 +72,21 @@ export function planMoves(
   options: MovePlannerOptions = DEFAULT_PLANNER_OPTIONS,
 ): PlannedMove[] {
   const visible = hideBombs(incoming);
-  const evaluate = (move: Move, sample: number) => {
+  return legalMoves(blocks).map((move) => planMove(blocks, move, visible, turn, valueModel, seed, options));
+}
+
+/** `planMoves` for a single move, e.g. `HOLD` for a forced push. */
+export function planMove(
+  blocks: Block[],
+  move: Move,
+  incoming: RowCell[],
+  turn: number,
+  valueModel: BoardValueModel,
+  seed: number,
+  options: MovePlannerOptions = DEFAULT_PLANNER_OPTIONS,
+): PlannedMove {
+  const visible = hideBombs(incoming);
+  const evaluate = (sample: number) => {
     const result = resolvePlayerMove(
       blocks,
       move,
@@ -83,11 +97,9 @@ export function planMoves(
     return { result, value: moveReturn(result, valueAfter, options.returnConfig) };
   };
 
-  return legalMoves(blocks).map((move) => {
-    const first = evaluate(move, 0);
-    if (first.result.steps.length === 1 || options.refillSamples <= 1) return { move, ...first };
-    let total = first.value;
-    for (let s = 1; s < options.refillSamples; s++) total += evaluate(move, s).value;
-    return { move, result: first.result, value: total / options.refillSamples };
-  });
+  const first = evaluate(0);
+  if (first.result.steps.length === 1 || options.refillSamples <= 1) return { move, ...first };
+  let total = first.value;
+  for (let s = 1; s < options.refillSamples; s++) total += evaluate(s).value;
+  return { move, result: first.result, value: total / options.refillSamples };
 }

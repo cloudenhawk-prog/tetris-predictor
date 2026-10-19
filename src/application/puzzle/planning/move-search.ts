@@ -15,6 +15,11 @@ export interface MoveSearchOptions {
   candidates: number;
   /** Player moves simulated after the candidate (1 = best reply to one sampled row). */
   depth: number;
+  /**
+   * Search even when only one move survives. Ranking alone doesn't need it, but
+   * comparing boards (`searchSplits`) needs every board's value and loss risk.
+   */
+  searchAlone?: boolean;
 }
 
 export const DEFAULT_SEARCH_OPTIONS: MoveSearchOptions = { candidates: 6, depth: 3 };
@@ -24,6 +29,8 @@ export interface SearchedMove extends PlannedMove {
   baseValue: number;
   /** Simulated futures averaged into `value` (0 = not searched). */
   samples: number;
+  /** Simulated futures in which the game was lost within the lookahead. */
+  losses: number;
 }
 
 /**
@@ -50,6 +57,7 @@ export function* searchMoves(
     ...p,
     baseValue: p.value,
     samples: 0,
+    losses: 0,
   }));
   const ranked = () =>
     [...moves].sort((a, b) =>
@@ -61,7 +69,7 @@ export function* searchMoves(
     .filter((m) => !m.result.lost)
     .sort((a, b) => b.baseValue - a.baseValue)
     .slice(0, options.candidates);
-  if (candidates.length < 2 || options.depth < 1) return;
+  if (candidates.length < (options.searchAlone ? 1 : 2) || options.depth < 1) return;
 
   const replyPlanner: MovePlannerOptions = { ...planner, refillSamples: 1 };
   const { discount } = planner.returnConfig;
@@ -85,6 +93,7 @@ export function* searchMoves(
         }
         if (d === options.depth - 1 || best.result.lost) {
           future += factor * best.value;
+          if (best.result.lost) candidate.losses++;
           break;
         }
         future += factor * moveReturn(best.result, 0, planner.returnConfig);

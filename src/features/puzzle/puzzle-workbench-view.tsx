@@ -1,15 +1,17 @@
-import { ArrowRight, ArrowUp, Bomb, Circle, Check, ChevronRight, Compass, Eraser, Layers3, Pencil, RotateCcw, Shield, Sparkles, Swords, Trophy } from "lucide-react";
+import { ArrowRight, ArrowUp, Bomb, Circle, Check, ChevronRight, Compass, Eraser, Layers3, Pencil, RotateCcw, Scissors, Shield, Sparkles, Swords, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COLS, ROWS } from "@/domain/puzzle/engine";
 import { PuzzleBoard } from "./components/puzzle-board";
 import { RecordingControls } from "./components/recording-controls";
 import { SearchControls } from "./components/search-controls";
+import { SplitPanel } from "./components/split-panel";
 import { usePuzzleWorkbench } from "./use-puzzle-workbench";
 
 const tools = [
   { value: "draw", label: "Draw", icon: Pencil },
   { value: "erase", label: "Erase", icon: Eraser },
   { value: "bomb", label: "Bomb", icon: Bomb },
+  { value: "split", label: "Split", icon: Scissors },
 ] as const;
 
 export function PuzzleWorkbenchView() {
@@ -20,7 +22,7 @@ export function PuzzleWorkbenchView() {
     : !nextValid
       ? `Next Row required. Leave 1–2 empty cells; ${8 - nextFilled} are empty.`
       : movedThisTurn
-        ? "Block moved. Advance the turn, or return it to its origin to move another."
+        ? "Block moved. Advance the turn, or return it to its origin to move another or split."
         : "Next Row ready. Slide a block (staying put is not a move), or apply a ranked move.";
 
   return (
@@ -47,7 +49,7 @@ export function PuzzleWorkbenchView() {
         <aside className="left-rail">
           <section className="rail-section">
             <div className="section-heading"><Pencil className="size-4" /><h2>Board editor</h2><span>01</span></div>
-            <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="mt-5 grid grid-cols-4 gap-2">
               {tools.map(({ value, label, icon: Icon }) => (
                 <Button key={value} variant="ghost" onClick={() => setTool(value)} aria-pressed={tool === value} disabled={animating} className={`editor-tool ${tool === value ? "editor-tool-active" : ""}`} title={label}>
                   <Icon className="size-5" /><span>{label}</span>
@@ -107,6 +109,7 @@ export function PuzzleWorkbenchView() {
               ))}
             </div>
           )}
+          <SplitPanel workbench={game} />
           <div className="analysis-summary"><div><span>Moves considered</span><span className="font-mono text-foreground">{analysis?.length ?? "—"}</span></div><div><span>Best clearances</span><span className="font-mono text-foreground">{ranked[0]?.cleared ?? "—"}</span></div></div>
         </aside>
       </main>
