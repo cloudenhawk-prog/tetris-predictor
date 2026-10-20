@@ -1,4 +1,4 @@
-import { Square } from "lucide-react";
+import { Scissors, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PuzzleWorkbench } from "../use-puzzle-workbench";
 
@@ -13,9 +13,19 @@ const sliders = [
  * then the top moves are refined by simulating futures from the current board.
  */
 export function SearchControls({ workbench }: { workbench: PuzzleWorkbench }) {
-  const { searchSettings, setSearchSettings, searchProgress, stopSearch, animating } = workbench;
+  const { searchSettings, setSearchSettings, searchProgress, stopSearch, splitCheck, splitAdvice, canCheckSplits, checkSplitsNow, animating } = workbench;
   const running = searchProgress !== null && !searchProgress.done;
   const fraction = searchProgress ? Math.min(1, searchProgress.elapsedMs / Math.max(1, searchProgress.thinkMs)) : 0;
+  const splitRunning = splitCheck !== null && !splitCheck.done;
+  const splitFraction = splitCheck ? Math.min(1, splitCheck.elapsedMs / Math.max(1, splitCheck.thinkMs)) : 0;
+  const splitSummary =
+    splitCheck?.done && splitCheck.advice
+      ? splitCheck.advice.kind === "rescue"
+        ? "Split rescue found."
+        : splitCheck.advice.kind === "preempt"
+          ? "Split now is better than waiting."
+          : splitCheck.advice.reason
+      : null;
 
   return (
     <div className="mt-4 space-y-3">
@@ -55,6 +65,28 @@ export function SearchControls({ workbench }: { workbench: PuzzleWorkbench }) {
           {searchProgress.warning ? <p className="mt-1 text-destructive">{searchProgress.warning}</p> : null}
         </div>
       ) : null}
+      <div className="text-[10px] text-muted-foreground" role="status">
+        <div className="flex items-center justify-between">
+          <span>
+            {splitRunning ? "Checking split options..." : "Split check"}
+            {splitCheck ? ` · ${splitCheck.samples} futures per option` : ""}
+          </span>
+          <Button variant="ghost" size="sm" onClick={checkSplitsNow} disabled={animating || running || splitRunning || !canCheckSplits} className="h-6 px-2 text-[10px]">
+            <Scissors />Check splits now
+          </Button>
+        </div>
+        {splitCheck ? (
+          <>
+            <div className="mt-1 h-1 overflow-hidden rounded bg-border">
+              <div className="h-full bg-primary transition-[width]" style={{ width: `${(splitCheck.done ? 1 : splitFraction) * 100}%` }} />
+            </div>
+            {splitCheck.warning ? <p className="mt-1 text-destructive">{splitCheck.warning}</p> : null}
+            {splitSummary ? (
+              <p className={`mt-1 ${splitAdvice ? "text-primary" : "text-muted-foreground"}`}>{splitSummary}</p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
