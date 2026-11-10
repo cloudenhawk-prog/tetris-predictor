@@ -8,15 +8,16 @@ const BLOCK_TONES = ["bg-block-1", "bg-block-2", "bg-block-3", "bg-block-4"];
 const toneFor = (width: number) => BLOCK_TONES[(width - 1) % BLOCK_TONES.length];
 
 export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
-  const { splitAdvice, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag } = workbench;
+  const { splitAdvice, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, randomizeNextRow, turnsSurvived, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag, clearNextRow } = workbench;
   return (
-          <div className="board-frame">
+          <div className="board-frame select-none">
             <div className="board-opening relative overflow-hidden border border-border-strong bg-secondary p-1">
                <div
                 className="grid select-none gap-1"
                  onPointerDown={(event) => pressPointer(event, "board")}
                  onPointerMove={(event) => trackPointer(event, "board")}
                  onPointerCancel={cancelDrag}
+                 onDragStart={(event) => event.preventDefault()}
                   onPointerLeave={() => {
                     setHovered(null);
                     if (drag?.zone === "board") finishDrag();
@@ -153,7 +154,7 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                 <span className="flex items-center gap-2 text-xs font-semibold"><ArrowUp className="size-3.5 text-primary" /> Next Row <span className="w-9 font-mono text-[10px] text-muted-foreground">{nextFilled}/8</span></span>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={randomizeNextRow} disabled={animating} title={`Random row for turn ${turnsSurvived + 1}, from the generator the model is trained on`} className="h-7 px-2 text-[10px]"><Dices className="size-3" />Random</Button>
-                  <Button variant="outline" size="sm" onClick={() => { setNextRow([]); resetAnalysis(); }} disabled={animating} className="h-7 px-2 text-[10px]"><Trash2 className="size-3" />Clear Next</Button>
+                  <Button variant="outline" size="sm" onClick={clearNextRow} disabled={animating} className="h-7 px-2 text-[10px]"><Trash2 className="size-3" />Clear Next</Button>
                 </div>
               </div>
               <div className="relative rounded border border-accent/60 bg-background p-1 shadow-inner">
@@ -162,6 +163,7 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   onPointerDown={(event) => pressPointer(event, "next")}
                   onPointerMove={(event) => trackPointer(event, "next")}
                   onPointerCancel={cancelDrag}
+                  onDragStart={(event) => event.preventDefault()}
                    onPointerLeave={() => {
                      setHovered(null);
                      if (drag?.zone === "next") finishDrag();

@@ -300,7 +300,13 @@ export function usePuzzleWorkbench() {
     return { row, col };
   };
 
+  // A browser text selection over the cells makes later presses start a native
+  // drag-and-drop of it, which swallows the pointer moves of our drag.
+  const clearSelection = () => window.getSelection()?.removeAllRanges();
+
   const pressPointer = (event: PointerEvent<HTMLDivElement>, zone: DragState["zone"]) => {
+    event.preventDefault();
+    clearSelection();
     event.currentTarget.setPointerCapture(event.pointerId);
     const { row, col } = pointerCell(event, zone);
     startDrag(zone, row, col);
@@ -316,6 +322,14 @@ export function usePuzzleWorkbench() {
   };
 
   const cancelDrag = () => setDrag(null);
+
+  const clearNextRow = () => {
+    setNextRow([]);
+    setDrag(null);
+    setHovered(null);
+    clearSelection();
+    resetAnalysis();
+  };
 
   /** `board` defaults to the shown board; pass it when the state hasn't caught up yet (right after a split). */
   const compute = (board: Block[] = blocks) => {
@@ -595,7 +609,7 @@ export function usePuzzleWorkbench() {
     resetAnalysis();
   };
 
-  return { splitCheck, splitAdvice, dismissSplitAdvice, splitAt, canSplit, canCheckSplits, checkSplitsNow, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag, compute: () => compute(), applyMove, advanceTurn, clearBoard };
+  return { splitCheck, splitAdvice, dismissSplitAdvice, splitAt, canSplit, canCheckSplits, checkSplitsNow, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag, clearNextRow, compute: () => compute(), applyMove, advanceTurn, clearBoard };
 }
 
 export type PuzzleWorkbench = ReturnType<typeof usePuzzleWorkbench>;
