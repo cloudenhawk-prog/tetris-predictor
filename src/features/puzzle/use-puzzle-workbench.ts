@@ -289,19 +289,33 @@ export function usePuzzleWorkbench() {
     setDrag(null);
   };
 
-  const trackPointer = (
-    event: PointerEvent<HTMLDivElement>,
-    zone: DragState["zone"],
-  ) => {
-    if (!drag || drag.zone !== zone) return;
+  /** The cell under the pointer, from the grid's bounds, so the gaps between cells count too. */
+  const pointerCell = (event: PointerEvent<HTMLDivElement>, zone: DragState["zone"]) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const col = Math.max(0, Math.min(COLS - 1, Math.floor(((event.clientX - rect.left) / rect.width) * COLS)));
     const row =
       zone === "board"
         ? Math.max(0, Math.min(ROWS - 1, Math.floor(((event.clientY - rect.top) / rect.height) * ROWS)))
         : 0;
+    return { row, col };
+  };
+
+  const pressPointer = (event: PointerEvent<HTMLDivElement>, zone: DragState["zone"]) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const { row, col } = pointerCell(event, zone);
+    startDrag(zone, row, col);
+  };
+
+  const trackPointer = (
+    event: PointerEvent<HTMLDivElement>,
+    zone: DragState["zone"],
+  ) => {
+    if (!drag || drag.zone !== zone) return;
+    const { row, col } = pointerCell(event, zone);
     extendDrag(zone, row, col);
   };
+
+  const cancelDrag = () => setDrag(null);
 
   /** `board` defaults to the shown board; pass it when the state hasn't caught up yet (right after a split). */
   const compute = (board: Block[] = blocks) => {
@@ -581,7 +595,7 @@ export function usePuzzleWorkbench() {
     resetAnalysis();
   };
 
-  return { splitCheck, splitAdvice, dismissSplitAdvice, splitAt, canSplit, canCheckSplits, checkSplitsNow, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, compute: () => compute(), applyMove, advanceTurn, clearBoard };
+  return { splitCheck, splitAdvice, dismissSplitAdvice, splitAt, canSplit, canCheckSplits, checkSplitsNow, blocks, nextRow, tool, setTool, drag, hovered, setHovered, ranked, preview, selected, setSelected: selectMove, analysis, searchSettings, setSearchSettings, searchProgress, stopSearch, turnsSurvived, setTurn, rowsDestroyed, setRowsDestroyed: setRowsDestroyedCount, score, setScore: setScoreCount, commitScore, trackScore, toggleTrackScore, recorder, toggleRecording, status, canAdvance, forcedPush, refilling, movedThisTurn, animating, removingIds, motionBlocks, lifting, nextFilled, nextValid, dragPreview, movePreview, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, setNextRow, randomizeNextRow, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag, compute: () => compute(), applyMove, advanceTurn, clearBoard };
 }
 
 export type PuzzleWorkbench = ReturnType<typeof usePuzzleWorkbench>;

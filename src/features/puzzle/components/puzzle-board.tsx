@@ -8,13 +8,15 @@ const BLOCK_TONES = ["bg-block-1", "bg-block-2", "bg-block-3", "bg-block-4"];
 const toneFor = (width: number) => BLOCK_TONES[(width - 1) % BLOCK_TONES.length];
 
 export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
-  const { splitAdvice, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, startDrag, extendDrag, finishDrag, trackPointer } = workbench;
+  const { splitAdvice, blocks, nextRow, drag, setHovered, preview, movePreview, dragPreview, motionBlocks, removingIds, hoveredBoardBlock, hoveredNextBlock, HoverToolIcon, lifting, nextFilled, animating, setNextRow, randomizeNextRow, turnsSurvived, resetAnalysis, extendDrag, finishDrag, trackPointer, pressPointer, cancelDrag } = workbench;
   return (
           <div className="board-frame">
             <div className="board-opening relative overflow-hidden border border-border-strong bg-secondary p-1">
                <div
-                className="grid gap-1"
+                className="grid select-none gap-1"
+                 onPointerDown={(event) => pressPointer(event, "board")}
                  onPointerMove={(event) => trackPointer(event, "board")}
+                 onPointerCancel={cancelDrag}
                   onPointerLeave={() => {
                     setHovered(null);
                     if (drag?.zone === "board") finishDrag();
@@ -31,10 +33,6 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   return (
                     <Button variant="ghost"
                       key={i}
-                      onPointerDown={(event) => {
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        startDrag("board", row, col);
-                      }}
                       onPointerEnter={() => extendDrag("board", row, col)}
                       onPointerMove={() => setHovered({ zone: "board", row, col })}
                       aria-label={`Row ${row + 1} column ${col + 1}`}
@@ -160,8 +158,10 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
               </div>
               <div className="relative rounded border border-accent/60 bg-background p-1 shadow-inner">
                 <div
-                  className="grid gap-1"
+                  className="grid select-none gap-1"
+                  onPointerDown={(event) => pressPointer(event, "next")}
                   onPointerMove={(event) => trackPointer(event, "next")}
+                  onPointerCancel={cancelDrag}
                    onPointerLeave={() => {
                      setHovered(null);
                      if (drag?.zone === "next") finishDrag();
@@ -175,10 +175,6 @@ export function PuzzleBoard({ workbench }: { workbench: PuzzleWorkbench }) {
                   {Array.from({ length: COLS }).map((_, col) => (
                     <Button variant="ghost"
                       key={col}
-                      onPointerDown={(event) => {
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        startDrag("next", 0, col);
-                      }}
                       onPointerEnter={() => extendDrag("next", 0, col)}
                        onPointerMove={() => setHovered({ zone: "next", row: 0, col })}
                       aria-label={`Incoming column ${col + 1}`}
